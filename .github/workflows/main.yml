@@ -36,8 +36,8 @@ jobs:
       # 4. Correr el Linter (¡nuestro análisis de código!)
       # Esto revisa que nuestro código esté bien escrito y sin errores.
       - name: Correr Linter (flake8)
-        run: flake8 .
+        run: python -m flake8 .
 
       # 5. Correr las Pruebas Unitarias (¡nuestro pytest!)
       - name: Correr Pruebas (pytest)
-        run: pytest
+        run: python -m pytest
