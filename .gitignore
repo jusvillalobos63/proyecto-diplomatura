@@ -1,11 +1,18 @@
-# Ignorar el entorno virtual de Python
+# Python (lo que ya teníamos)
 venv/
-
-# Ignorar la caché de Python
 __pycache__/
+*.pyc
 
-# Ignorar la caché de Pytest
-.pytest_cache/
+# Terraform (¡LO NUEVO!)
+# Ignora la carpeta que contiene los plugins (¡el archivo de 648MB!)
+.terraform/
 
-# Ignorar archivos del sistema de Mac
+# Ignora los archivos de "estado" (pueden contener secretos)
+terraform.tfstate
+terraform.tfstate.backup
+
+# Ignora los archivos de "plan" (también pueden tener data sensible)
+*.tfplan
+
+# macOS
 .DS_Store
