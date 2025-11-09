@@ -1,0 +1,43 @@
+# Nombre del workflow
+name: CI - Pruebas y Linting
+
+# --- DISPARADOR ---
+# Cuándo queremos que se ejecute este workflow
+# En este caso, cada vez que alguien haga "push" a la rama "main"
+on:
+  push:
+    branches: [ "main" ]
+
+# --- TAREAS (JOBS) ---
+# Qué queremos que haga
+jobs:
+  # Definimos una tarea llamada "probar-y-lintear"
+  probar-y-lintear:
+    # Le decimos a GitHub que nos dé una "máquina" virtual con Ubuntu
+    runs-on: ubuntu-latest
+
+    # --- PASOS (STEPS) ---
+    # Los comandos que correrá en esa máquina
+    steps:
+      # 1. "Check out" (Descargar) nuestro código desde GitHub
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      # 2. Configurar el entorno de Python (para que existan python y pip)
+      - name: Configurar Python 3.9
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.9
+
+      # 3. Instalar nuestras dependencias (Flask, pytest, flake8)
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      # 4. Correr el Linter (¡nuestro análisis de código!)
+      # Esto revisa que nuestro código esté bien escrito y sin errores.
+      - name: Correr Linter (flake8)
+        run: flake8 .
+
+      # 5. Correr las Pruebas Unitarias (¡nuestro pytest!)
+      - name: Correr Pruebas (pytest)
+        run: pytest
