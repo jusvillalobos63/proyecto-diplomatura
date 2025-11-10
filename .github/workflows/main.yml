@@ -1,43 +1,80 @@
 # Nombre del workflow
-name: CI - Pruebas y Linting
+name: CI/CD - Pruebas, Build y Despliegue
 
 # --- DISPARADOR ---
-# Cuándo queremos que se ejecute este workflow
-# En este caso, cada vez que alguien haga "push" a la rama "main"
+# Sigue siendo el mismo: en un "push" a "main"
 on:
   push:
     branches: [ "main" ]
 
 # --- TAREAS (JOBS) ---
-# Qué queremos que haga
 jobs:
-  # Definimos una tarea llamada "probar-y-lintear"
+  # --- JOB 1: INTEGRACIÓN CONTINUA (CI) ---
+  # (Este es el que ya teníamos y funcionaba)
   probar-y-lintear:
-    # Le decimos a GitHub que nos dé una "máquina" virtual con Ubuntu
     runs-on: ubuntu-latest
-
-    # --- PASOS (STEPS) ---
-    # Los comandos que correrá en esa máquina
     steps:
-      # 1. "Check out" (Descargar) nuestro código desde GitHub
       - name: Descargar el código
         uses: actions/checkout@v4
-
-      # 2. Configurar el entorno de Python (para que existan python y pip)
       - name: Configurar Python 3.9
         uses: actions/setup-python@v5
         with:
           python-version: 3.9
-
-      # 3. Instalar nuestras dependencias (Flask, pytest, flake8)
       - name: Instalar dependencias
         run: pip install -r requirements.txt
-
-      # 4. Correr el Linter (¡nuestro análisis de código!)
-      # Esto revisa que nuestro código esté bien escrito y sin errores.
       - name: Correr Linter (flake8)
         run: python -m flake8 .
-
-      # 5. Correr las Pruebas Unitarias (¡nuestro pytest!)
       - name: Correr Pruebas (pytest)
         run: python -m pytest
+
+  # --- JOB 2: DESPLIEGUE CONTINUO (CD) ---
+  # (¡Esto es lo NUEVO!)
+  construir-y-desplegar:
+    # Le decimos a GitHub que esta tarea DEPENDE de la anterior
+    # ¡Solo se ejecutará si "probar-y-lintear" fue exitoso!
+    needs: probar-y-lintear
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Descargamos el código de nuevo
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      # 2. Iniciar sesión en Docker Hub
+      # (Usa los secretos DOCKERHUB_USERNAME y DOCKERHUB_TOKEN)
+      - name: Iniciar sesión en Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 3. Construir la imagen de Docker y subirla a Docker Hub
+      # (Etiquetará la imagen como "jusvillalobos/proyecto-diplomatura:latest")
+      - name: Construir y Subir la Imagen a Docker Hub
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
+
+      # 4. Desplegar en el Servidor AWS por SSH
+      # (Usa los secretos de AWS: IP, Usuario y la Llave Privada)
+      - name: Desplegar en el Servidor AWS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.AWS_SERVER_IP }}
+          username: ${{ secrets.AWS_SERVER_USER }}
+          key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          # ¡Este es el script que se ejecutará DENTRO de tu servidor AWS!
+          script: |
+            # 1. Descarga la nueva imagen desde Docker Hub
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
+            
+            # 2. Detiene y elimina el contenedor anterior (si existe)
+            # "|| true" es para que no falle si el contenedor no existe la primera vez
+            docker stop mi-app || true
+            docker rm mi-app || true
+            
+            # 3. Corre el nuevo contenedor
+            # ¡Mapea el puerto 80 (público) al 5001 (de nuestra app)!
+            docker run -d -p 80:5001 --name mi-app ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
