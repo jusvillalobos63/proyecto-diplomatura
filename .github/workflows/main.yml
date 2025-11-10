@@ -81,64 +81,57 @@ jobs:
             # Crear la carpeta de monitoreo
             mkdir -p monitoring
 
-            # Recrear el prometheus.yml en el servidor
-            # (Usamos 'cat' y 'EOF' para escribir un archivo multilinea)
-            cat <<'EOF' > monitoring/prometheus.yml
-global:
-  scrape_interval: 15s
+            # --- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! ---
+            # Recrear el prometheus.yml en el servidor (¡Usando 'echo'!)
+            echo "global:" > monitoring/prometheus.yml
+            echo "  scrape_interval: 15s" >> monitoring/prometheus.yml
+            echo "" >> monitoring/prometheus.yml
+            echo "scrape_configs:" >> monitoring/prometheus.yml
+            echo "  - job_name: \"prometheus\"" >> monitoring/prometheus.yml
+            echo "    static_configs:" >> monitoring/prometheus.yml
+            echo "      - targets: [\"localhost:9090\"]" >> monitoring/prometheus.yml
+            echo "" >> monitoring/prometheus.yml
+            echo "  # ¡Este es el job que lee nuestra app de Flask!" >> monitoring/prometheus.yml
+            echo "  - job_name: \"mi-app-flask\"" >> monitoring/prometheus.yml
+            echo "    static_configs:" >> monitoring/prometheus.yml
+            echo "      # Usamos 'host.docker.internal' (que definimos arriba)" >> monitoring/prometheus.yml
+            echo "      - targets: [\"host.docker.internal:5001\"]" >> monitoring/prometheus.yml
 
-scrape_configs:
-  - job_name: "prometheus"
-    static_configs:
-      - targets: ["localhost:9090"]
-
-  # ¡Este es el job que lee nuestra app de Flask!
-  - job_name: "mi-app-flask"
-    static_configs:
-      # Usamos 'host.docker.internal' (que definimos arriba)
-      # para que el contenedor de Prometheus pueda "ver" la app
-      - targets: ["host.docker.internal:5001"]
-EOF
-
-            # Recrear el docker-compose.yml en el servidor
-            # (¡CON CORRECCIÓN!)
-            cat <<'EOF' > docker-compose.yml
-version: '3.8'
-
-services:
-  prometheus:
-    image: prom/prometheus:v2.47.2
-    container_name: prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-    networks:
-      - monitoring-net
-    # ¡CORRECCIÓN CLAVE!
-    # Le decimos a ESTE contenedor qué significa "host.docker.internal"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-
-  grafana:
-    image: grafana/grafana-oss:10.1.5
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-    networks:
-      - monitoring-net
-
-networks:
-  monitoring-net:
-    driver: bridge
-
-volumes:
-  grafana-data:
-EOF
+            # Recrear el docker-compose.yml en el servidor (¡Usando 'echo'!)
+            echo "version: '3.8'" > docker-compose.yml
+            echo "" >> docker-compose.yml
+            echo "services:" >> docker-compose.yml
+            echo "  prometheus:" >> docker-compose.yml
+            echo "    image: prom/prometheus:v2.47.2" >> docker-compose.yml
+            echo "    container_name: prometheus" >> docker-compose.yml
+            echo "    ports:" >> docker-compose.yml
+            echo "      - \"9090:9090\"" >> docker-compose.yml
+            echo "    volumes:" >> docker-compose.yml
+            echo "      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml" >> docker-compose.yml
+            echo "    command:" >> docker-compose.yml
+            echo "      - '--config.file=/etc/prometheus/prometheus.yml'" >> docker-compose.yml
+            echo "    networks:" >> docker-compose.yml
+            echo "      - monitoring-net" >> docker-compose.yml
+            echo "    # ¡CORRECCIÓN CLAVE!" >> docker-compose.yml
+            echo "    extra_hosts:" >> docker-compose.yml
+            echo "      - \"host.docker.internal:host-gateway\"" >> docker-compose.yml
+            echo "" >> docker-compose.yml
+            echo "  grafana:" >> docker-compose.yml
+            echo "    image: grafana/grafana-oss:10.1.5" >> docker-compose.yml
+            echo "    container_name: grafana" >> docker-compose.yml
+            echo "    ports:" >> docker-compose.yml
+            echo "      - \"3000:3000\"" >> docker-compose.yml
+            echo "    volumes:" >> docker-compose.yml
+            echo "      - grafana-data:/var/lib/grafana" >> docker-compose.yml
+            echo "    networks:" >> docker-compose.yml
+            echo "      - monitoring-net" >> docker-compose.yml
+            echo "" >> docker-compose.yml
+            echo "networks:" >> docker-compose.yml
+            echo "  monitoring-net:" >> docker-compose.yml
+            echo "    driver: bridge" >> docker-compose.yml
+            echo "" >> docker-compose.yml
+            echo "volumes:" >> docker-compose.yml
+            echo "  grafana-data:" >> docker-compose.yml
 
             # Parar el stack de monitoreo anterior (si existe) y levantarlo
             echo "--- Iniciando Prometheus y Grafana ---"
