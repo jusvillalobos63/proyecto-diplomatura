@@ -38,6 +38,24 @@ resource "aws_security_group" "web_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+# --- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! ---
+  
+  # Permite Grafana (puerto 3000) desde cualquier IP
+  ingress {
+    from_port   = 3000
+    to_port     = 3000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Permite Prometheus (puerto 9090) desde cualquier IP
+  ingress {
+    from_port   = 9090
+    to_port     = 9090
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # Permite todo el tráfico saliente
   egress {
     from_port   = 0
