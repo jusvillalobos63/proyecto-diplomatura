@@ -2,7 +2,6 @@
 name: CI/CD - Pruebas, Build y Despliegue
 
 # --- DISPARADOR ---
-# Sigue siendo el mismo: en un "push" a "main"
 on:
   push:
     branches: [ "main" ]
@@ -10,7 +9,6 @@ on:
 # --- TAREAS (JOBS) ---
 jobs:
   # --- JOB 1: INTEGRACIÓN CONTINUA (CI) ---
-  # (Este es el que ya teníamos y funcionaba)
   probar-y-lintear:
     runs-on: ubuntu-latest
     steps:
@@ -28,10 +26,7 @@ jobs:
         run: python -m pytest
 
   # --- JOB 2: DESPLIEGUE CONTINUO (CD) ---
-  # (¡Esto es lo NUEVO!)
   construir-y-desplegar:
-    # Le decimos a GitHub que esta tarea DEPENDE de la anterior
-    # ¡Solo se ejecutará si "probar-y-lintear" fue exitoso!
     needs: probar-y-lintear
     runs-on: ubuntu-latest
 
@@ -41,15 +36,13 @@ jobs:
         uses: actions/checkout@v4
 
       # 2. Iniciar sesión en Docker Hub
-      # (Usa los secretos DOCKERHUB_USERNAME y DOCKERHUB_TOKEN)
       - name: Iniciar sesión en Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 3. Construir la imagen de Docker y subirla a Docker Hub
-      # (Etiquetará la imagen como "jusvillalobos/proyecto-diplomatura:latest")
+      # 3. Construir y Subir la Imagen a Docker Hub
       - name: Construir y Subir la Imagen a Docker Hub
         uses: docker/build-push-action@v5
         with:
@@ -57,24 +50,97 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
 
-      # 4. Desplegar en el Servidor AWS por SSH
-      # (Usa los secretos de AWS: IP, Usuario y la Llave Privada)
-      - name: Desplegar en el Servidor AWS
+      # 4. Desplegar TODO en el Servidor AWS
+      - name: Desplegar App y Monitoreo en AWS
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.AWS_SERVER_IP }}
           username: ${{ secrets.AWS_SERVER_USER }}
           key: ${{ secrets.AWS_SSH_PRIVATE_KEY }}
+          
           # ¡Este es el script que se ejecutará DENTRO de tu servidor AWS!
           script: |
-            # 1. Descarga la nueva imagen desde Docker Hub
+            # --- 1. Desplegar la App (¡CON CORRECCIÓN!) ---
+            echo "--- Desplegando la aplicación Flask ---"
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
-            
-            # 2. Detiene y elimina el contenedor anterior (si existe)
-            # "|| true" es para que no falle si el contenedor no existe la primera vez
             docker stop mi-app || true
             docker rm mi-app || true
             
-            # 3. Corre el nuevo contenedor
-            # ¡Mapea el puerto 80 (público) al 5001 (de nuestra app)!
-            docker run -d -p 80:5001 --name mi-app ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
+            # ¡CORRECCIÓN CLAVE!
+            # Añadimos --add-host para que Prometheus (corriendo en Docker)
+            # pueda encontrar "host.docker.internal" (que es nuestra app).
+            docker run -d \
+              -p 80:5001 \
+              --name mi-app \
+              --add-host=host.docker.internal:host-gateway \
+              ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
+
+            # --- 2. Desplegar Monitoreo (¡NUEVO!) ---
+            echo "--- Desplegando el stack de Monitoreo ---"
+            
+            # Crear la carpeta de monitoreo
+            mkdir -p monitoring
+
+            # Recrear el prometheus.yml en el servidor
+            # (Usamos 'cat' y 'EOF' para escribir un archivo multilinea)
+            cat <<'EOF' > monitoring/prometheus.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # ¡Este es el job que lee nuestra app de Flask!
+  - job_name: "mi-app-flask"
+    static_configs:
+      # Usamos 'host.docker.internal' (que definimos arriba)
+      # para que el contenedor de Prometheus pueda "ver" la app
+      - targets: ["host.docker.internal:5001"]
+EOF
+
+            # Recrear el docker-compose.yml en el servidor
+            # (¡CON CORRECCIÓN!)
+            cat <<'EOF' > docker-compose.yml
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.47.2
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    networks:
+      - monitoring-net
+    # ¡CORRECCIÓN CLAVE!
+    # Le decimos a ESTE contenedor qué significa "host.docker.internal"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana-oss:10.1.5
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - monitoring-net
+
+networks:
+  monitoring-net:
+    driver: bridge
+
+volumes:
+  grafana-data:
+EOF
+
+            # Parar el stack de monitoreo anterior (si existe) y levantarlo
+            echo "--- Iniciando Prometheus y Grafana ---"
+            docker-compose down || true
+            docker-compose up -d
