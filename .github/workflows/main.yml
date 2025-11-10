@@ -27,7 +27,6 @@ jobs:
 
   # --- JOB 2: DESPLIEGUE CONTINUO (CD) ---
   construir-y-desplegar:
-    # Este job "depende" del anterior. Solo corre si "probar-y-lintear" fue exitoso
     needs: probar-y-lintear
     runs-on: ubuntu-latest
 
@@ -37,7 +36,6 @@ jobs:
         uses: actions/checkout@v4
 
       # 2. Iniciar sesión en Docker Hub
-      # Usamos los "Secretos" que creamos en GitHub
       - name: Iniciar sesión en Docker Hub
         uses: docker/login-action@v3
         with:
@@ -48,13 +46,12 @@ jobs:
       - name: Construir y Subir la Imagen a Docker Hub
         uses: docker/build-push-action@v5
         with:
-          context: . # Usa el Dockerfile en la raíz
-          push: true  # "push" (subir) la imagen
-          # Le ponemos un "tag" (etiqueta) usando nuestro usuario de Docker Hub
+          context: .
+          push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
 
       # 4. Desplegar TODO en el Servidor AWS
-      - name: Desplegar App y Monitoreo en AWS
+      - name: Desplegar Stack Completo en AWS
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.AWS_SERVER_IP }}
@@ -63,79 +60,71 @@ jobs:
           
           # ¡Este es el script que se ejecutará DENTRO de tu servidor AWS!
           script: |
-            # --- ¡Instalamos Docker Compose (si falta)! ---
+            # --- 1. Instalar Docker Compose (si falta) ---
             echo "--- Instalando Docker Compose ---"
-            # Actualizamos la lista de paquetes e instalamos docker-compose
-            # El '-y' aprueba automáticamente la instalación
             sudo apt-get update -y
             sudo apt-get install -y docker-compose
 
-            # --- 1. Desplegar la App (¡CON CORRECCIÓN!) ---
-            echo "--- Desplegando la aplicación Flask ---"
-            # Descargamos la imagen más nueva desde Docker Hub
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
-            # Detenemos y borramos la versión anterior (si existe)
-            docker stop mi-app || true
-            docker rm mi-app || true
-            
-            # --- ¡¡¡AQUÍ ESTÁ LA CORRECCIÓN!!! ---
-            # Exponemos el puerto 80 (para el público)
-            # Y exponemos el puerto 5001 (para Prometheus)
-            docker run -d \
-              -p 80:5001 \
-              -p 5001:5001 \
-              --name mi-app \
-              --add-host=host.docker.internal:host-gateway \
-              ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
-
-            # --- 2. Desplegar Monitoreo ---
-            echo "--- Desplegando el stack de Monitoreo ---"
-            # Crear la carpeta de monitoreo
+            # --- 2. Crear la carpeta de monitoreo ---
             mkdir -p monitoring
 
-            # Recrear el prometheus.yml en el servidor (¡Usando 'echo'!)
+            # --- 3. Recrear el prometheus.yml ---
+            echo "--- Creando prometheus.yml ---"
             echo "global:" > monitoring/prometheus.yml
             echo "  scrape_interval: 15s" >> monitoring/prometheus.yml
-            echo "" >> monitoring/prometheus.yml
             echo "scrape_configs:" >> monitoring/prometheus.yml
-            echo "  - job_name: \"prometheus\"" >> monitoring/prometheus.yml
+            echo "  - job_name: 'prometheus'" >> monitoring/prometheus.yml
             echo "    static_configs:" >> monitoring/prometheus.yml
-            echo "      - targets: [\"localhost:9090\"]" >> monitoring/prometheus.yml
-            echo "" >> monitoring/prometheus.yml
-            echo "  # ¡Este es el job que lee nuestra app de Flask!" >> monitoring/prometheus.yml
-            echo "  - job_name: \"mi-app-flask\"" >> monitoring/prometheus.yml
+            echo "      - targets: ['localhost:9090']" >> monitoring/prometheus.yml
+            echo "  - job_name: 'mi-app-flask'" >> monitoring/prometheus.yml
             echo "    static_configs:" >> monitoring/prometheus.yml
-            echo "      # Usamos 'host.docker.internal' (que definimos arriba)" >> monitoring/prometheus.yml
-            echo "      - targets: [\"host.docker.internal:5001\"]" >> monitoring/prometheus.yml
+            echo "      # ¡La nueva configuración! Apunta al nombre del servicio 'mi-app'" >> monitoring/prometheus.yml
+            echo "      - targets: ['mi-app:5001']" >> monitoring/prometheus.yml
 
-            # Recrear el docker-compose.yml en el servidor (¡Usando 'echo'!)
+            # --- 4. Recrear el docker-compose.yml (¡AHORA CON LOS 3 SERVICIOS!) ---
+            echo "--- Creando docker-compose.yml ---"
             echo "version: '3.8'" > docker-compose.yml
-            echo "" >> docker-compose.yml
             echo "services:" >> docker-compose.yml
+            
+            # --- Servicio 1: Nuestra App Flask ---
+            echo "  mi-app:" >> docker-compose.yml
+            echo "    image: ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest" >> docker-compose.yml
+            echo "    container_name: mi-app" >> docker-compose.yml
+            echo "    ports:" >> docker-compose.yml
+            echo "      - '80:5001'   # Puerto para el público" >> docker-compose.yml
+            echo "      - '5001:5001' # Puerto para Prometheus" >> docker-compose.yml
+            echo "    networks: [app-monitoring-net]" >> docker-compose.yml
+            echo "    restart: always" >> docker-compose.yml
+
+            # --- Servicio 2: Prometheus ---
             echo "  prometheus:" >> docker-compose.yml
             echo "    image: prom/prometheus:v2.47.2" >> docker-compose.yml
             echo "    container_name: prometheus" >> docker-compose.yml
-            echo "    ports: [\"9090:9090\"]" >> docker-compose.yml
-            echo "    volumes: [\"./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml\"]" >> docker-compose.yml
+            echo "    ports: ['9090:9090']" >> docker-compose.yml
+            echo "    volumes: ['./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml']" >> docker-compose.yml
             echo "    command: ['--config.file=/etc/prometheus/prometheus.yml']" >> docker-compose.yml
-            echo "    networks: [monitoring-net]" >> docker-compose.yml
-            echo "    extra_hosts: [\"host.docker.internal:host-gateway\"]" >> docker-compose.yml
-            echo "" >> docker-compose.yml
+            echo "    networks: [app-monitoring-net]" >> docker-compose.yml
+            echo "    restart: always" >> docker-compose.yml
+
+            # --- Servicio 3: Grafana ---
             echo "  grafana:" >> docker-compose.yml
             echo "    image: grafana/grafana-oss:10.1.5" >> docker-compose.yml
             echo "    container_name: grafana" >> docker-compose.yml
-            echo "    ports: [\"3000:3000\"]" >> docker-compose.yml
+            echo "    ports: ['3000:3000']" >> docker-compose.yml
             echo "    volumes: [grafana-data:/var/lib/grafana]" >> docker-compose.yml
-            echo "    networks: [monitoring-net]" >> docker-compose.yml
-            echo "" >> docker-compose.yml
+            echo "    networks: [app-monitoring-net]" >> docker-compose.yml
+            echo "    restart: always" >> docker-compose.yml
+
+            # --- Red y Volúmenes ---
             echo "networks:" >> docker-compose.yml
-            echo "  monitoring-net:" >> docker-compose.yml
+            echo "  app-monitoring-net:" >> docker-compose.yml
             echo "    driver: bridge" >> docker-compose.yml
-            echo "" >> docker-compose.yml
             echo "volumes:" >> docker-compose.yml
             echo "  grafana-data:" >> docker-compose.yml
 
-            # Parar el stack de monitoreo anterior (si existe) y levantarlo
-            echo "--- Iniciando Prometheus y Grafana ---"
-            docker-compose down || true
+            # --- 5. Desplegar todo el stack ---
+            echo "--- Desplegando stack completo (App + Monitoreo) ---"
+            # Descargamos la imagen más nueva de nuestra app
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
+            # (docker-compose se encarga de parar y recrear solo lo que cambió)
             docker-compose up -d
