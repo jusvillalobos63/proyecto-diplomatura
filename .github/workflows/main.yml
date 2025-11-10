@@ -60,6 +60,13 @@ jobs:
           
           # ¡Este es el script que se ejecutará DENTRO de tu servidor AWS!
           script: |
+            # --- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! ---
+            echo "--- Instalando Docker Compose ---"
+            # Actualizamos la lista de paquetes e instalamos docker-compose
+            # El '-y' aprueba automáticamente la instalación
+            sudo apt-get update -y
+            sudo apt-get install -y docker-compose
+
             # --- 1. Desplegar la App (¡CON CORRECCIÓN!) ---
             echo "--- Desplegando la aplicación Flask ---"
             docker pull ${{ secrets.DOCKERHUB_USERNAME }}/proyecto-diplomatura:latest
@@ -81,7 +88,6 @@ jobs:
             # Crear la carpeta de monitoreo
             mkdir -p monitoring
 
-            # --- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! ---
             # Recrear el prometheus.yml en el servidor (¡Usando 'echo'!)
             echo "global:" > monitoring/prometheus.yml
             echo "  scrape_interval: 15s" >> monitoring/prometheus.yml
