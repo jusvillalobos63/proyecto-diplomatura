@@ -1,46 +1,43 @@
 from flask import Flask
 from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
 
-"""
-Proyecto Diplomatura - Aplicación Base
-
-Integrantes:
-- Leonel Galetto
-- Justo Suarez Villalobos
-
-Resumen:
-Aplicación Flask con rutas básicas, healthcheck y métricas para Prometheus.
-Incluye dockerización, CI/CD con GitHub Actions y monitoreo con Grafana.
-"""
-
-# Métricas
+# --- MÉTRICAS DE PROMETHEUS ---
+# Creamos un "contador" para rastrear las visitas a la página principal
+# (¡Debe tener 2 espacios antes del comentario!)
 home_visits_counter = Counter(
-    "home_visits",
-    "Numero de visitas a la pagina principal"
+    'home_visits', 'Número de visitas a la página principal'
 )
 
+# Creamos nuestra aplicación Flask
 app = Flask(__name__)
 
 
-@app.route("/")
+# --- RUTAS DE LA APLICACIÓN ---
+
+@app.route('/')
 def home():
-    """Ruta principal: Devuelve saludo y actualiza métricas."""
+    """Ruta principal que muestra el mensaje de bienvenida."""
+    # Incrementamos el contador cada vez que alguien visita la página
     home_visits_counter.inc()
     return "¡Hola! Esta es la aplicación base del Proyecto 1."
 
 
-@app.route("/health")
+@app.route('/health')
 def health_check():
-    """Health Check: Verificación de estado del servicio."""
+    """Ruta de 'health check' para monitoreo."""
+    # (2 líneas en blanco antes de la función)
     return "OK", 200
 
 
-@app.route("/metrics")
+@app.route('/metrics')
 def metrics():
-    """Endpoint de métricas para Prometheus."""
-    return generate_latest(), 200, {"Content-Type": CONTENT_TYPE_LATEST}
+    """Ruta para exponer las métricas de Prometheus."""
+    # (2 líneas en blanco antes de la función)
+    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 
-if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=5001)
-
+# --- PUNTO DE ENTRADA ---
+# (2 líneas en blanco antes de esto)
+if __name__ == '__main__':
+    # Corremos la app en el puerto 5001, accesible desde cualquier IP
+    app.run(debug=False, host='0.0.0.0', port=5001)
